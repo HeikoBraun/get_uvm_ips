@@ -7,7 +7,7 @@ pub struct Cli {
     #[arg(
         short = 't',
         long = "toml",
-        help = "Toml file for config of UVM IPs.\nIf not set it will try to use:\n  - $UVM_DIR/admin/tool_setups/uvm_ips.toml\n  - $DB_ADMIN/admin/tool_setups/uvm_ips.toml\n  - ./uvm_ips.toml"
+        help = "Toml file for config of UVM IPs.\nIf not set it will try to use:\n  - $UVM_DIR/admin/tool_setups/uvm_ips.toml\n  - $DB_ADMIN/admin/tool_setups/uvm_ips.toml\n  - ./uvm_ips.toml\nContent is: <UVC name> = <version>"
     )]
     pub toml_file: Option<String>,
 
@@ -15,7 +15,7 @@ pub struct Cli {
     #[arg(
         short = 'n',
         long = "dry-run",
-        default_value_t = true,
+        default_value_t = false,
         help = "dry run, no commands will be executed"
     )]
     pub dry_run: bool,

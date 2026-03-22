@@ -1,18 +1,49 @@
 use std::{error::Error, process::Command};
-use vergen::{BuildBuilder, CargoBuilder, Emitter, RustcBuilder, SysinfoBuilder};
 
-fn direct_normal_dependencies_via_cargo_tree() -> Result<String, Box<dyn Error>> {
+fn git_remote_name() -> Result<String, Box<dyn Error>> {
+    let output = Command::new("git").args(["remote"]).output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "git remote failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let text = String::from_utf8(output.stdout)?;
+    Ok(text.lines().next().unwrap_or("").trim().to_string())
+}
+
+fn git_branch_name() -> Result<String, Box<dyn Error>> {
+    let output = Command::new("git")
+        .args(["branch", "--show-current"])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "git branch failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    let text = String::from_utf8(output.stdout)?;
+    Ok(text.trim().to_string())
+}
+
+fn deps_via_cargo_tree(kind: &str) -> Result<String, Box<dyn Error>> {
     let pkg_name = std::env::var("CARGO_PKG_NAME")?;
 
     let output = Command::new("cargo")
         .args([
-            "tree", "-e", "normal", "-p", &pkg_name, "--depth", "1", "--prefix", "none",
+            "tree", "-e", kind, "-p", &pkg_name, "--prefix", "none", "--depth", "1",
         ])
         .output()?;
 
     if !output.status.success() {
         return Err(format!(
-            "cargo tree failed: {}",
+            "cargo tree ({kind}) failed: {}",
             String::from_utf8_lossy(&output.stderr)
         )
         .into());
@@ -20,16 +51,12 @@ fn direct_normal_dependencies_via_cargo_tree() -> Result<String, Box<dyn Error>>
 
     let text = String::from_utf8(output.stdout)?;
 
-    // Output format (typical):
-    // mycrate v0.1.0
-    // clap v4.5.49
-    //
-    // We skip the first line (the crate itself), then parse `name version`.
     let mut pairs = Vec::new();
     for (i, line) in text.lines().enumerate() {
         if i == 0 {
-            continue;
+            continue; // skip the package itself
         }
+
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -52,23 +79,70 @@ fn direct_normal_dependencies_via_cargo_tree() -> Result<String, Box<dyn Error>>
     Ok(pairs.join(","))
 }
 
+fn git_remote_url(remote: &str) -> Option<String> {
+    let output = Command::new("git")
+        .args(["remote", "get-url", remote])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8(output.stdout).ok()?;
+    let url = text.trim();
+    if url.is_empty() {
+        None
+    } else {
+        Some(url.to_string())
+    }
+}
+
+fn git_commit_hash() -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8(output.stdout).ok()?;
+    Some(text.trim().to_string())
+}
+
+fn rustc_version() -> Option<String> {
+    let output = Command::new("rustc").args(["--version"]).output().ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8(output.stdout).ok()?;
+    Some(text.trim().to_string())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Build all "cargo:" instructions (crate name/version, etc.)
-    // Requires: vergen = { version = "9.1.0", features = ["cargo"] }
-    let build = BuildBuilder::all_build()?;
-    let cargo = CargoBuilder::all_cargo()?;
-    let rustc = RustcBuilder::all_rustc()?;
-    let si = SysinfoBuilder::all_sysinfo()?;
+    let normal_deps = deps_via_cargo_tree("normal")?;
+    let build_deps = deps_via_cargo_tree("build")?;
 
-    Emitter::default()
-        .add_instructions(&build)?
-        .add_instructions(&cargo)?
-        .add_instructions(&rustc)?
-        .add_instructions(&si)?
-        .emit()?;
+    println!("cargo:rustc-env=APP_NORMAL_DEPS={normal_deps}");
+    println!("cargo:rustc-env=APP_BUILD_DEPS={build_deps}");
 
-    let direct_deps = direct_normal_dependencies_via_cargo_tree()?;
-    println!("cargo:rustc-env=APP_DIRECT_DEPENDENCIES={direct_deps}");
+    // Git
+    let git_remote = git_remote_name()?;
+    let git_remote_url = git_remote_url("origin").unwrap_or_else(|| "<unknown>".to_string());
+    let git_branch = git_branch_name()?;
+    let git_commit = git_commit_hash().unwrap_or_else(|| "<unknown>".to_string());
+
+    println!("cargo:rustc-env=APP_GIT_REMOTE={git_remote}");
+    println!("cargo:rustc-env=APP_GIT_REMOTE_URL={git_remote_url}");
+    println!("cargo:rustc-env=APP_GIT_BRANCH={git_branch}");
+    println!("cargo:rustc-env=APP_GIT_COMMIT={git_commit}");
+
+    let rustc_version = rustc_version().unwrap_or_else(|| "<unknown>".to_string());
+    println!("cargo:rustc-env=APP_RUSTC_VERSION={rustc_version}");
 
     Ok(())
 }

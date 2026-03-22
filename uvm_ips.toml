@@ -1,0 +1,5 @@
+Apfel = "1.0"
+Birne = "2.0"
+
+[general]
+text = "Beispiel"

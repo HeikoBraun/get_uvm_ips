@@ -7,19 +7,41 @@ use toml::Table;
 pub fn print_about() {
     println!("Authors: {}", env!("CARGO_PKG_AUTHORS"));
     println!("Version: {}", env!("CARGO_PKG_VERSION"));
-    println!("Compiled with rustc {}", env!("VERGEN_RUSTC_SEMVER"));
-    println!("Build Timestamp: {}", env!("VERGEN_BUILD_TIMESTAMP"));
-    println!("Compiled dependencies:");
+    println!("Git:");
+    println!(
+        "    Remote URL: {}",
+        option_env!("APP_GIT_REMOTE_URL").unwrap_or("local git repository")
+    );
+    println!(
+        "    Branch: {}",
+        option_env!("APP_GIT_BRANCH").unwrap_or("<unknown>")
+    );
+    println!(
+        "    Commit: {}",
+        option_env!("APP_GIT_COMMIT").unwrap_or("<unknown>")
+    );
+    println!(
+        "Compiler: {}",
+        option_env!("APP_RUSTC_VERSION").unwrap_or("<unknown>")
+    );
 
-    let deps = option_env!("APP_DIRECT_DEPENDENCIES").unwrap_or("");
-    if deps.is_empty() {
-        println!("  <not available>");
-        return;
+    let normal_deps = option_env!("APP_NORMAL_DEPS").unwrap_or("");
+    let build_deps = option_env!("APP_BUILD_DEPS").unwrap_or("");
+
+    if !normal_deps.is_empty() {
+        println!("Dependencies:");
+        for pair in normal_deps.split(',').filter(|s| !s.is_empty()) {
+            let (name, version) = pair.split_once('=').unwrap_or((pair, "<unknown>"));
+            println!("  - {name}: {version}");
+        }
     }
 
-    for pair in deps.split(',').filter(|s| !s.is_empty()) {
-        let (name, version) = pair.split_once('=').unwrap_or((pair, "<unknown>"));
-        println!("    - {name}: {version}");
+    if !build_deps.is_empty() {
+        println!("Build dependencies:");
+        for pair in build_deps.split(',').filter(|s| !s.is_empty()) {
+            let (name, version) = pair.split_once('=').unwrap_or((pair, "<unknown>"));
+            println!("  - {name}: {version}");
+        }
     }
 }
 
@@ -130,47 +152,4 @@ pub(crate) fn run_cmd(mut cmd: Command, dry_run: bool) {
             exit(1);
         }
     };
-}
-
-pub fn print_help_toml() {
-    println!(
-        "===================================================================
- databases.toml
-===================================================================
-# Defaults for databases, so it not has to be defined everywhere.
-# Can be empty.
-[general]
-repository_type = \"<git or projadm>\"
-repository = \"ssh::git@github.com:User/project.git\"
-build = \"command to build files\"
-doc = \"command to generate documentation\"
-versions = {{ latest = \"dev\", stable = \"release\" }}
-
-# This is not a database.
-# It is a virtual, reserved top database for top build or doc commands.
-[top]
-build = \"command to build top files\"
-doc = \"command to build top documentation\"
-
-# All other sections define databases
-[database_dig]
-# mandatory if not defined by \"general\"
-repository_type = \"<git or projadm>\"
-# not necessary/will be ignored for \"projadm\"
-repository = \"ssh::git@github.com:User/project_dig.git\"
-# optional
-build = \"command to build files\"\
-# optional
-doc = \"command to generate documentation\"\
-# optional
-versions = {{ latest = \"dev\", stable = \"release\" }}
-# hierarchy in which databases are updated, the higher, the better
-# optional, default is 0, top has a fix value of 1^31
-hierarchy = 2
-# optional
-skip = true # skip this database
-# optional
-labels = [\"analog\",\"digital\"]
-"
-    )
 }
